@@ -7,6 +7,7 @@ from logging import FileHandler, Formatter, StreamHandler
 
 from dotenv import load_dotenv
 from telebot import TeleBot
+import telebot
 
 import exceptions
 import requests
@@ -53,7 +54,7 @@ def send_message(bot, message):
     try:
         logger.debug('Начало отправки сообщения')
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-    except TeleBot.TelegramError:
+    except telebot.apihelper.ApiException:
         logger.error('Ошибка отправки сообщения')
     else:
         logger.debug('Сообщение отправлено')
