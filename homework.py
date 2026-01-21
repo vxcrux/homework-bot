@@ -42,8 +42,6 @@ formatter = Formatter(
 )
 handler.setFormatter(formatter)
 
-LAST_SENT_MESSAGE = None
-
 
 def check_tokens():
     """Проверяем доступность переменных окружения."""
@@ -62,28 +60,18 @@ def check_tokens():
             ", ".join(missing_tokens)
         }'
         logger.critical(error_message)
-        sys.exit(error_message)
+        raise SystemExit(error_message)
 
     logger.info('Все переменные окружения успешно загружены')
 
 
 def send_message(bot, message):
     """Отправляет сообщения в чат."""
-    global LAST_SENT_MESSAGE
-
-    if message == LAST_SENT_MESSAGE:
-        logger.debug(
-            'Пропускаем отправку, сообщение идентично последнему отправленному'
-        )
-        return
-
     logger.debug(f'Начало отправки сообщения: "{message[:50]}..."')
 
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
         logger.debug('Сообщение отправлено')
-
-        LAST_SENT_MESSAGE = message
 
     except (telebot.apihelper.ApiException, requests.RequestException) as e:
         logger.error(f'Ошибка отправки сообщения: {e}')
@@ -101,24 +89,21 @@ def get_api_answer(timestamp):
 
     try:
         response = requests.get(**params_request)
-        if response.status_code != http.HTTPStatus.OK:
-            status_reason = (
-                response.reason if response.reason else 'Неизвестная ошибка'
-            )
-            raise exceptions.InvalidRequest(
-                f'Ошибка запроса {response.status_code} ({status_reason})'
-            )
-
-        logger.info(f'Запрос к API успешен. Статус: {response.status_code}')
-        return response.json()
 
     except (requests.ConnectionError, requests.RequestException) as e:
         error_detail = (
-            f'Не подключается к API {ENDPOINT} с параметрами {timestamp}'
+            f'Не подключается к API {ENDPOINT} с параметрами {timestamp}. '
             f'Ошибка: {e}'
         )
-        logger.error(error_detail)
         raise exceptions.ResponseApiError(error_detail)
+
+    if response.status_code != http.HTTPStatus.OK:
+        raise exceptions.InvalidRequest(
+            f'Ошибка запроса {response.status_code} ({response.reason})'
+        )
+
+    logger.info(f'Запрос к API успешен. Статус: {response.status_code}')
+    return response.json()
 
 
 def check_response(response):
@@ -130,7 +115,7 @@ def check_response(response):
         )
 
     if 'homeworks' not in response:
-        raise exceptions.EmptyResponseAPI('Нет ключа homeworks')
+        raise KeyError('Нет ключа homeworks')
 
     homeworks = response.get('homeworks')
 
@@ -148,10 +133,12 @@ def parse_status(homework):
     logger.debug('Начало проверки статуса отдельной работы')
 
     if 'homework_name' not in homework:
-        raise exceptions.UnknownStatus('Нет homework_name в homework')
+        raise KeyError('Нет homework_name в homework')
+    homework_name = homework['homework_name']
 
-    homework_name = homework.get('homework_name')
-    homework_status = homework.get('status')
+    if 'status' not in homework:
+        raise KeyError('Нет ключа "status" в объекте homework')
+    homework_status = homework['status']
 
     if homework_status not in HOMEWORK_VERDICTS:
         raise exceptions.UnknownStatus(
@@ -181,31 +168,18 @@ def main():
             response = get_api_answer(timestamp)
             homeworks = check_response(response)
 
-            current_date = response.get('current_date')
-            if current_date:
-                timestamp = current_date
-            else:
-                timestamp = int(time.time())
-
             if homeworks:
                 status_message = parse_status(homeworks[0])
                 send_message(bot, status_message)
             else:
                 logger.debug('Новых работ нет')
 
-        except (
-            exceptions.InvalidRequest,
-            exceptions.ResponseApiError,
-            exceptions.EmptyResponseAPI,
-            exceptions.UnknownStatus,
-            TypeError,
-        ) as error:
-            message = f'Сбой в работе программы: {error}'
-            logger.error(message)
-            send_message(bot, message)
+            current_date = response.get('current_date')
+            timestamp = current_date if current_date else int(time.time())
+
         except Exception as error:
-            message = f'Критический сбой в работе программы: {error}'
-            logger.critical(message, exc_info=True)
+            message = f'Сбой в работе программы: {error}'
+            logger.error(message, exc_info=True)
             send_message(bot, message)
 
         finally:
