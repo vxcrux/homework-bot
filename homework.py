@@ -90,12 +90,9 @@ def get_api_answer(timestamp):
     try:
         response = requests.get(**params_request)
 
-    except (requests.ConnectionError, requests.RequestException) as e:
-        error_detail = (
-            f'Не подключается к API {ENDPOINT} с параметрами {timestamp}. '
-            f'Ошибка: {e}'
-        )
-        raise exceptions.ResponseApiError(error_detail)
+    except requests.RequestException as e:
+        logger.error(f'Сетевая ошибка при запросе к {ENDPOINT}: {e}')
+        raise exceptions.ResponseApiError(str(e))
 
     if response.status_code != http.HTTPStatus.OK:
         raise exceptions.InvalidRequest(
@@ -162,6 +159,7 @@ def main():
     bot = TeleBot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
     send_message(bot, 'Старт')
+    message_error = ''
 
     while True:
         try:
@@ -175,12 +173,17 @@ def main():
                 logger.debug('Новых работ нет')
 
             current_date = response.get('current_date')
-            timestamp = current_date if current_date else int(time.time())
+            if current_date:
+                timestamp = current_date
+            else:
+                timestamp = int(time.time())
 
         except Exception as error:
-            message = f'Сбой в работе программы: {error}'
-            logger.error(message, exc_info=True)
-            send_message(bot, message)
+            new_message_error = f'Сбой в работе программы: {error}'
+            logger.error(new_message_error)
+            if new_message_error != message_error:
+                if send_message(bot, new_message_error) is not None:
+                    message_error = new_message_error
 
         finally:
             time.sleep(RETRY_PERIOD)

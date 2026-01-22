@@ -4,12 +4,6 @@ class InvalidRequest(Exception):
     pass
 
 
-class ResponseApiError(Exception):
-    """Ошибка соединения с API."""
-
-    pass
-
-
 class EmptyResponseAPI(Exception):
     """Пустой ответ API."""
 
