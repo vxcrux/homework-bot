@@ -91,7 +91,6 @@ def get_api_answer(timestamp):
         response = requests.get(**params_request)
 
     except requests.RequestException as e:
-        logger.error(f'Сетевая ошибка при запросе к {ENDPOINT}: {e}')
         raise exceptions.ResponseApiError(str(e))
 
     if response.status_code != http.HTTPStatus.OK:
@@ -172,18 +171,18 @@ def main():
             else:
                 logger.debug('Новых работ нет')
 
-            current_date = response.get('current_date')
-            if current_date:
-                timestamp = current_date
-            else:
-                timestamp = int(time.time())
+            timestamp = response.get('current_date', int(time.time()))
+
+            message_error = ''
 
         except Exception as error:
             new_message_error = f'Сбой в работе программы: {error}'
-            logger.error(new_message_error)
+
+            logger.error(new_message_error, exc_info=True)
+
             if new_message_error != message_error:
-                if send_message(bot, new_message_error) is not None:
-                    message_error = new_message_error
+                send_message(bot, new_message_error)
+                message_error = new_message_error
 
         finally:
             time.sleep(RETRY_PERIOD)
